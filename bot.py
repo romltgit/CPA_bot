@@ -9,16 +9,10 @@ from clients import *
 
 # Проверка валидности и наличия тикера в списке тикеров биржи 
 def ticker_is_confirmed(ticker,tickers_list):
-    if(ticker.count('/') == 1):
-        if(ticker.replace('/','') in tickers_list['spot']):
-            return True
-        else:
-            return False
+    if( (ticker.count('/') == 1 and ticker.replace('/','') in tickers_list['spot']) or (ticker.count('/') == 0 and ticker in tickers_list['futures']) ):
+        return True
     else:
-        if(ticker in tickers_list['futures']):
-            return True
-        else:
-            return False
+        return False
 
 # Загрузка из JSON списка уникальных тикеров
 def get_tickers():

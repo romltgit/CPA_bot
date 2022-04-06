@@ -1,5 +1,5 @@
 from peewee import *
-db = SqliteDatabase('db/alert.db')
+db = SqliteDatabase('alert.db')
 
 class Alert(Model):
     id = PrimaryKeyField(unique=True)

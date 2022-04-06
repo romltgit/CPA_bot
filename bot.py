@@ -1,30 +1,6 @@
-import telebot
-from binance.client import Client
 from settings import *
-import json
 from db_models import *
-from logs import *
-import time
-from clients import *
-
-# Проверка валидности и наличия тикера в списке тикеров биржи 
-def ticker_is_confirmed(ticker,tickers_list):
-    if( (ticker.count('/') == 1 and ticker.replace('/','') in tickers_list['spot']) or (ticker.count('/') == 0 and ticker in tickers_list['futures']) ):
-        return True
-    else:
-        return False
-
-# Загрузка из JSON списка уникальных тикеров
-def get_tickers():
-    tickers_list = []
-    while(tickers_list == []):
-        try:
-            with open("tickers_list.json", "r") as read_file:
-                tickers_list = json.load(read_file)
-        except:
-            log.error("Не удалось считать JSON")
-            time.sleep(0.1)
-    return tickers_list
+from clients_and_defs import *
 
 # Телеграм-Бот
 @bot.message_handler(content_types=['text'])
@@ -48,8 +24,9 @@ def help(message):
             if(len(results) <= settings['user_alerts_limit'] and len(set([j.ticker for j in results])) <= settings['user_tickers_limit']): 
 
                 if(len(lst) >= 3):      # Проверка валидности команды: Команда должна быть больше 3 слов (комментарий к уведомлению необязателен)
-                    ticker = str(lst[1]).upper()        # Тикер, который указал пользователь
-                    tickers_list = get_tickers()        # Получаем список тикеров биржи
+                    ticker = str(lst[1]).upper()                    # Тикер, который указал пользователь
+                    tickers_list = get_tickers_from_json()          # Получаем список тикеров биржи
+
                     if(ticker_is_confirmed(ticker,tickers_list)):       # Проверка валидности и наличия тикера в списке тикеров биржи 
                         try:
                             price = float(lst[2])       # Цена активации уведомления

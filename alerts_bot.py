@@ -1,49 +1,14 @@
-import json
 import time
 import threading
-from logs import *
-from clients import *
+from clients_and_defs import *
 
 global_tickers = {} # Тикеры биржи
 
 # Получение всех тикеров биржи, разделеных по категориям
 def tickers_update():
-
     global global_tickers
-    tikers = {
-        "futures":[],   # Фьючерские тикеры
-        "spot":[]       # Спот тикеры
-    }
-
-    try: 
-        #Получение фьючерсных тикеров
-
-        ticker = []
-        info = client.futures_exchange_info()   # USDT-futures
-        for j in info['symbols']:
-            ticker.append(j['pair'])
-        info = client.futures_coin_exchange_info()  # COIN-futures
-        for j in info['symbols']:
-            ticker.append(j['pair'])
-        tikers["futures"] = list(set(ticker))
-
-        #Получение спотовых тикеров
-        ticker = []
-        info = client.get_all_tickers()        # SPOT
-        for j in info:
-            ticker.append(j['symbol'])
-        tikers["spot"] = list(set(ticker))
-
-        # Запись в глобальную переменную
-        global_tickers = tikers.copy()
-
-        # Запись в JSON 
-        with open("tickers_list.json", "w") as write_file:
-            json.dump(tikers, write_file,indent=4)
-        # Задержка перед обновлениями
-        time.sleep(5)
-    except:
-        log.error("Ошибка при обновлении тикеров")
+    global_tickers = get_tickers()
+    time.sleep(5)
 
 # Проверка активации уведомлений
 def get_bar(ticker):

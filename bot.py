@@ -3,47 +3,37 @@ from binance.client import Client
 from settings import *
 import json
 from db_models import *
+from logs import *
+import time
+from clients import *
 
-# Инициализация Телеграм-бота
-bot = telebot.TeleBot(settings['telegram_token'])
+# Проверка валидности и наличия тикера в списке тикеров биржи 
+def ticker_is_confirmed(ticker,tickers_list):
+    if(ticker.count('/') == 1):
+        if(ticker.replace('/','') in tickers_list['spot']):
+            return True
+        else:
+            return False
+    else:
+        if(ticker in tickers_list['futures']):
+            return True
+        else:
+            return False
 
-# Инициализация клиента BInance-api
-client = Client(settings['binance_keys']['api_key'], settings['binance_keys']['secret_key'])
-
-# Создание таблицы Alerts в БД, если её нет
-db.create_tables([Alert])
-
-
-# Обновление и запись в JSON уникальных тикеров Binance
-def tickers_update():
-    tikers = []
-    info = client.futures_exchange_info()
-    for j in info['symbols']:
-        tikers.append(j['pair'])
-    info = client.futures_coin_exchange_info()
-    for j in info['symbols']:
-        tikers.append(j['pair'])
-    info = client.get_all_tickers()
-    for j in info:
-        tikers.append(j['symbol'])
-    tikers = list(set(tikers))
-    with open("tickers_list.json", "w") as write_file:
-        json.dump(tikers, write_file)
-
-# Отправка сообщения об ошибке
-def send_error(chat_id,error):
-    bot.send_message(chat_id, errors[error], parse_mode="Markdown")
-
-
-
-tickers_update()
 # Загрузка из JSON списка уникальных тикеров
-with open("tickers_list.json", "r") as read_file:
-    tickers_list = json.load(read_file)
+def get_tickers():
+    tickers_list = []
+    while(tickers_list == []):
+        try:
+            with open("tickers_list.json", "r") as read_file:
+                tickers_list = json.load(read_file)
+        except:
+            log.error("Не удалось считать JSON")
+            time.sleep(0.1)
+    return tickers_list
 
 # Телеграм-Бот
 @bot.message_handler(content_types=['text'])
-
 def help(message):
     lst = message.text.split()
     match lst[0]:
@@ -52,35 +42,31 @@ def help(message):
             bot.send_message(message.chat.id, commands_description['help'], parse_mode="Markdown")
 
         case "/start":
-            # Описание команды start
+            # Описание команды /start
             bot.send_message(message.chat.id, commands_description['start'],parse_mode="Markdown")
 
         case "/add":
             # Добавление нового уведомления
 
             # Получение из БД всех активных уведомлений пользователя
-            results = Alert.select().where(Alert.chat_id == message.chat.id)    
-
+            results = Alert.select().where(Alert.chat_id == message.chat.id) 
             # Проверка на превышение лимита кол-ва уведомлений и тикеров
             if(len(results) <= settings['user_alerts_limit'] and len(set([j.ticker for j in results])) <= settings['user_tickers_limit']): 
 
                 if(len(lst) >= 3):      # Проверка валидности команды: Команда должна быть больше 3 слов (комментарий к уведомлению необязателен)
                     ticker = str(lst[1]).upper()        # Тикер, который указал пользователь
-
-                    if((ticker.replace('/','')) in tickers_list):       # Проверка наличия тикера в списке тикеров биржи 
-                                                                        # (удаление '/' необходимо, т.к биржа выдает все тикеры без разделителей)
+                    tickers_list = get_tickers()        # Получаем список тикеров биржи
+                    if(ticker_is_confirmed(ticker,tickers_list)):       # Проверка валидности и наличия тикера в списке тикеров биржи 
                         try:
                             price = float(lst[2])       # Цена активации уведомления
 
-                            if(price > 0):
+                            if(price > 0 and price < 10000000):
                                 text = ''                   
                                 for j in lst[3:len(lst)]:
-                                    text = text + j + " "
-                                text = text[:-1]        # Комментарий к уведомлению
-
+                                    text = "%s%s " %(text,j)
+                                
                                 # Добавление уведомления в БД
                                 query = Alert.insert({'chat_id':message.chat.id,'ticker':ticker,'price':price,'comment':text}).execute()
-
                                 bot.send_message(message.chat.id, "Уведомление *%s* по цене *%s* добавлено с комментарием: *%s*" %(ticker,price,text),parse_mode="Markdown")
                             else: 
                                 send_error(message.chat.id, 'invalid_price')   # Невалидная цена уведомления 
@@ -101,36 +87,38 @@ def help(message):
                 if(lst[1] == "all"):
                     # Удаление всех активных уведомлений и отправка сообщения пользователю
 
-                    query = Alert.delete().where(Alert.chat_id == message.chat.id ).execute()
-                    bot.send_message(message.chat.id, "Все уведомления удалены", parse_mode="Markdown")
+                    results = Alert.select().where(Alert.chat_id == message.chat.id)
+                    if(len(results) != 0):
+                        query = Alert.delete().where(Alert.chat_id == message.chat.id).execute()
+                        bot.send_message(message.chat.id, "Все уведомления удалены", parse_mode="Markdown")
+                    else:
+                        send_error(message.chat.id, 'no_alerts') 
 
                 else:
                     ticker = str(lst[1]).upper()        # Тикер, который указал пользователь
-                    if((ticker.replace('/','')) in tickers_list):       # Проверка наличия тикера в списке тикеров биржи 
-                        if(len(lst) == 2):
-                            # Удаление всех активных уведомлений по тикеру и отправка сообщения пользователю
-                            
+                    if(len(lst) == 2):
+                        # Удаление всех активных уведомлений по тикеру и отправка сообщения пользователю
+                        results = Alert.select().where(Alert.chat_id == message.chat.id and Alert.ticker == ticker)
+                        if(len(results) != 0):
                             query = Alert.delete().where(Alert.chat_id == message.chat.id and Alert.ticker == ticker).execute()
                             bot.send_message(message.chat.id, "Все уведомления тикера %s удалены" %(ticker), parse_mode="Markdown")
                         else:
-                            # Удаление конкретного уведомления
+                            send_error(message.chat.id, 'no_alerts_for_ticker') 
+                    else:
+                        # Удаление конкретного уведомления
+                        try:
+                            price = float(lst[2])
+                            results = Alert.select().where(Alert.chat_id == message.chat.id and Alert.ticker == ticker and Alert.price == price)
+                            # Проверка наличия этого уведомления
+                            if(len(results) != 0):
+                                # Удаление уведомления и отправка сообщения пользователю
+                                query = Alert.delete().where(Alert.chat_id == message.chat.id and Alert.ticker == ticker and Alert.price == price).execute()
+                                bot.send_message(message.chat.id, "Уведомление тикера *%s* при цене *%s* удалено" %(ticker,price), parse_mode="Markdown")
+                            else:
+                                send_error(message.chat.id, 'no_alerts_for_ticker_and_price')  # Нет конретного уведомления
+                        except:
+                            send_error(message.chat.id, 'invalid_command') # Невалидная цена уведомления (не Float)
 
-                            try:
-                                price = float(lst[2])
-                                results = Alert.select().where(Alert.chat_id == message.chat.id and Alert.ticker == ticker and Alert.price == price)
-
-                                # Проверка наличия этого уведомления
-                                if(len(results) != 0):
-                                    # Удаление уведомления и отправка сообщения пользователю
-
-                                    query = Alert.delete().where(Alert.chat_id == message.chat.id and Alert.ticker == ticker and Alert.price == price).execute()
-                                    bot.send_message(message.chat.id, "Уведомление тикера *%s* при цене *%s* удалено" %(ticker,price), parse_mode="Markdown")
-                                else:
-                                    send_error(message.chat.id, 'no_alerts_for_ticker_and_price')  # Нет конретного уведомления
-                            except:
-                                send_error(message.chat.id, 'invalid_command') # Невалидная цена уведомления (не Float)
-
-                    else: send_error(message.chat.id, 'invalid_ticker')    # Тикер отсутвует на бирже
                         
             else: send_error(message.chat.id, 'invalid_command')   # Невалидный синтаксис команды
 
@@ -155,10 +143,8 @@ def help(message):
                     else:
                         send_error(message.chat.id, 'no_alerts')   # Нет уведомлений
 
-
-                elif(ticker.replace('/','') in tickers_list):
+                else:
                     # Вывод всех активных уведомлений конкретного тикера у пользователя
-
                     results = Alert.select().where(Alert.chat_id == message.chat.id and Alert.ticker == ticker)
                     for alert in results:
                         text = "%s \n\nТикер: %s \nЦена: %s\nКомментарий: %s" %(text,alert.ticker,alert.price,alert.comment)
@@ -168,7 +154,6 @@ def help(message):
                     else:
                         send_error(message.chat.id, 'no_alerts_for_ticker') # Нет уведомлений для конкретного тикера
 
-                else: send_error(message.chat.id, 'invalid_ticker') # Тикер отсутвует на бирже
 
             else: send_error(message.chat.id, 'invalid_command') # Невалидный синтаксис команды
         case _:

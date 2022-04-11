@@ -57,7 +57,7 @@ def get_bar(ticker):
             return
     if(info != []):
         high = max([float(info[-1][2]),float(info[-2][2])])   #Хай последних 2х минутных свечей
-        low = max([float(info[-1][3]),float(info[-2][3])])    #Лой последних 2х минутных свечей
+        low = min([float(info[-1][3]),float(info[-2][3])])    #Лой последних 2х минутных свечей
         # Получение всех уведомлений на этом тикере
         results = Alert.select().where(Alert.ticker == ticker)
 

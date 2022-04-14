@@ -1,7 +1,7 @@
 # Crypto Price Alerts Bot
 Телеграм-бот для создания уведомлений на цены криптовалют. Поддерживаемые биржи: Binance
 
-Рабочий бот: https://t.me/@c_price_alerts_bot
+Рабочий бот: https://t.me/c_price_alerts_bot
 
 ## Описание и функционал
 
